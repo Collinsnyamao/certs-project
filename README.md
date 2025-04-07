@@ -26,16 +26,11 @@ To understand and demonstrate the process of creating a local Certificate Author
 sudo dnf install -y httpd mod_ssl openssl openssl-devel vim firefox
 ```
 
-**What it does:**
-
-- Installs the Apache web server
-- Installs SSL module for Apache
-- Installs OpenSSL for certificate operations
-- Installs Firefox for testing HTTPS
+**Explanation:** Installs the Apache server, SSL support, OpenSSL for crypto operations, and Firefox for browser testing.
 
 ---
 
-### 🔹 Step 2: Create Certificate Authority (CA) Directory Structure
+### 🔹 Step 2: Create CA Directory Structure
 
 ```bash
 sudo mkdir -p /etc/pki/CA/{certs,crl,newcerts,private}
@@ -43,42 +38,37 @@ sudo touch /etc/pki/CA/index.txt
 echo 1000 | sudo tee /etc/pki/CA/serial
 ```
 
-**Explanation:**
-
-- Sets up directories and files used by OpenSSL to manage CA operations, including issued certs, revocation lists, and serial tracking.
+**Explanation:** Sets up the file structure required for a functioning local Certificate Authority.
 
 ---
 
 ### 🔹 Step 3: Configure OpenSSL
 
-Edit the file:
+Edit OpenSSL config:
 
 ```bash
 sudo vi /etc/pki/tls/openssl.cnf
 ```
 
-**What to change and why:**
+Update or ensure the following sections match:
 
-- `default_md = sha256` — uses secure hashing
-- `dir = /etc/pki/CA` — defines CA base directory
-- `certificate` and `private_key` — paths to CA cert and key
-- `policy_match` — sets rules for certificate info validation
-
-This tells OpenSSL where to read/write CA data and what rules to enforce.
+- `[ ca ]` and `[ CA_default ]` for directory paths and key/cert files
+- `[ policy_match ]` for certificate field requirements
+- `[ req ]` to define the request format
+- `[ req_distinguished_name ]` for default identity values
+- `default_md = sha256`
+- `string_mask = utf8only`
 
 ---
 
-### 🔹 Step 4: Generate Self-Signed CA Certificate
+### 🔹 Step 4: Generate CA Certificate
 
 ```bash
 cd /etc/pki/CA
 openssl req -new -x509 -keyout private/cakey.pem -out cacert.pem -config ../tls/openssl.cnf
 ```
 
-**Explanation:**
-
-- Creates the CA’s own certificate (`cacert.pem`) and private key (`cakey.pem`)
-- Required for signing other certificates
+**Explanation:** This is your root CA certificate used to sign other certificates.
 
 ---
 
@@ -88,23 +78,18 @@ openssl req -new -x509 -keyout private/cakey.pem -out cacert.pem -config ../tls/
 sudo service httpd restart
 ```
 
-**Why:**
-
-- Ensures Apache is running and ready to serve content over HTTP/HTTPS
-
 ---
 
 ### 🔹 Step 6: Trust the CA in Firefox
 
-1. Open Firefox
+1. Launch Firefox:
+   ```bash
+   firefox &
+   ```
 2. Go to **Settings → Privacy & Security → View Certificates**
-3. Under **Authorities**, click **Import**
-4. Select `/etc/pki/CA/cacert.pem`
-5. Check **"Trust this CA to identify websites"**
-
-**Why:**
-
-- Without trusting this CA, Firefox will treat all certs signed by it as untrusted
+3. Click **Authorities → Import**
+4. Choose: `/etc/pki/CA/cacert.pem`
+5. Check **“Trust this CA to identify websites”**
 
 ---
 
@@ -115,10 +100,7 @@ cd /etc/pki/CA/private
 openssl req -new -keyout newkey.pem -out newreq.pem -days 360 -config ../../tls/openssl.cnf
 ```
 
-**What it does:**
-
-- Generates a private key and CSR (certificate signing request)
-- This request is what the CA will sign
+**Explanation:** Generates a private key and certificate signing request (CSR) for the server.
 
 ---
 
@@ -129,11 +111,7 @@ sudo bash -c "cat newreq.pem newkey.pem > new.pem"
 sudo openssl ca -policy policy_anything -out newcert.pem -config ../../tls/openssl.cnf -infiles new.pem
 ```
 
-**Explanation:**
-
-- Combines CSR and key
-- Signs the certificate using the CA’s private key
-- `newcert.pem` is now a valid cert trusted by your local CA
+**Explanation:** The CA signs the request to issue a valid certificate (`newcert.pem`).
 
 ---
 
@@ -146,16 +124,12 @@ sudo cp /etc/pki/CA/private/newcert.pem ssl.crt/
 sudo cp /etc/pki/CA/private/newkey.pem ssl.key/
 ```
 
-Edit `/etc/httpd/conf.d/ssl.conf`:
+Update `/etc/httpd/conf.d/ssl.conf`:
 
 ```apache
 SSLCertificateFile /etc/httpd/conf/ssl.crt/newcert.pem
 SSLCertificateKeyFile /etc/httpd/conf/ssl.key/newkey.pem
 ```
-
-**Explanation:**
-
-- Apache needs to know where your cert and key are to enable SSL
 
 ---
 
@@ -167,55 +141,54 @@ sudo service httpd stop
 sudo service httpd start
 ```
 
-**Explanation:**
+---
 
-- Temporarily disables SELinux to avoid access errors
-- Restarts Apache so it picks up the new SSL config
+### 🔹 Step 11: Test HTTPS in Browser
+
+1. Open Firefox
+2. Visit: `https://localhost`
+3. Click **Advanced → Accept the Risk and Continue**
+4. Page should load securely
 
 ---
 
-### 🔹 Step 11: Test the HTTPS Connection
+### 🔹 Step 12: View Certificate Details
 
-Open Firefox and navigate to:
-
-```
-https://localhost
-```
-
-- You may get a security warning (expected)
-- Click “Advanced → Accept the Risk and Continue”
-- The Apache welcome page should load over HTTPS
+1. Click the padlock icon in Firefox
+2. Click **“Connection Secure” → “More Information” → “View Certificate”**
+3. Note:
+   - **Certificate Hierarchy**: should show your CA and `localhost`
+   - **Signature Algorithm**: typically `sha256WithRSAEncryption`
 
 ---
 
-### 🔹 Step 12: Re-enable SELinux
+### 🔹 Step 13: Re-enable SELinux
 
 ```bash
 sudo setenforce 1
-getenforce
+getenforce  # Should return: Enforcing
 ```
-
-**Why:**
-
-- Best practice is to keep SELinux enforcing unless troubleshooting
 
 ---
 
-## 🧾 Result
+## ✅ Result
 
 You have:
 
-- Created a working local Certificate Authority
-- Generated and signed a server certificate
-- Configured Apache to use SSL with that certificate
-- Verified secure HTTPS access via browser
+- Created a local CA
+- Signed a server certificate
+- Configured Apache for SSL
+- Verified HTTPS with trusted CA in Firefox
 
 ---
 
 ## 🧠 Summary
 
-- Digital certificates provide secure communication and identity verification
-- OpenSSL enables you to build a PKI environment from scratch
-- Apache supports SSL easily when provided with valid cert and key files
+This lab provides practical experience with:
+
+- Public Key Infrastructure (PKI)
+- OpenSSL certificate generation and signing
+- Configuring HTTPS on Apache
+- Certificate trust management in browsers
 
 ---
