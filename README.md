@@ -1,4 +1,4 @@
-# Lab 4.19A – Detailed Guide: Implementing Digital Certificates in OpenSSL
+# Lab 4.19A – Complete and Detailed Guide: Implementing Digital Certificates in OpenSSL
 
 ## 🎯 Objective
 
@@ -26,7 +26,7 @@ To understand and demonstrate the process of creating a local Certificate Author
 sudo dnf install -y httpd mod_ssl openssl openssl-devel vim firefox
 ```
 
-**Explanation:** Installs the Apache server, SSL support, OpenSSL for crypto operations, and Firefox for browser testing.
+Installs required packages for web server (Apache), SSL (mod_ssl), certificate generation (OpenSSL), and browser testing (Firefox).
 
 ---
 
@@ -38,7 +38,7 @@ sudo touch /etc/pki/CA/index.txt
 echo 1000 | sudo tee /etc/pki/CA/serial
 ```
 
-**Explanation:** Sets up the file structure required for a functioning local Certificate Authority.
+Sets up the file structure required for a functioning Certificate Authority (CA).
 
 ---
 
@@ -50,14 +50,66 @@ Edit OpenSSL config:
 sudo vi /etc/pki/tls/openssl.cnf
 ```
 
-Update or ensure the following sections match:
+#### ✅ Ensure/Modify These Sections:
 
-- `[ ca ]` and `[ CA_default ]` for directory paths and key/cert files
-- `[ policy_match ]` for certificate field requirements
-- `[ req ]` to define the request format
-- `[ req_distinguished_name ]` for default identity values
-- `default_md = sha256`
-- `string_mask = utf8only`
+- `[ ca ]`
+
+  ```ini
+  default_ca = CA_default
+  ```
+
+- `[ CA_default ]`
+
+  ```ini
+  dir = /etc/pki/CA
+  database = $dir/index.txt
+  certificate = $dir/cacert.pem
+  private_key = $dir/private/cakey.pem
+  serial = $dir/serial
+  x509_extensions = usr_cert
+  default_md = sha256
+  policy = policy_match
+  ```
+
+- `[ policy_match ]`
+
+  ```ini
+  countryName = match
+  stateOrProvinceName = match
+  organizationName = match
+  organizationalUnitName = optional
+  commonName = supplied
+  emailAddress = optional
+  ```
+
+- `[ req ]`
+
+  ```ini
+  default_bits = 2048
+  default_md = sha256
+  string_mask = utf8only
+  distinguished_name = req_distinguished_name
+  x509_extensions = v3_ca
+  ```
+
+- `[ req_distinguished_name ]` — Add or uncomment:
+
+  ```ini
+  countryName_default = US
+  stateOrProvinceName_default = Georgia
+  localityName_default = Atlanta
+  0.organizationName_default = B3
+  commonName = localhost
+  emailAddress = admin@example.com
+  ```
+
+- `[ usr_cert ]` — Ensure this includes:
+  ```ini
+  basicConstraints = CA:FALSE
+  subjectKeyIdentifier = hash
+  authorityKeyIdentifier = keyid,issuer
+  keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+  ```
 
 ---
 
@@ -68,7 +120,7 @@ cd /etc/pki/CA
 openssl req -new -x509 -keyout private/cakey.pem -out cacert.pem -config ../tls/openssl.cnf
 ```
 
-**Explanation:** This is your root CA certificate used to sign other certificates.
+Creates the self-signed root certificate for your CA.
 
 ---
 
@@ -82,13 +134,10 @@ sudo service httpd restart
 
 ### 🔹 Step 6: Trust the CA in Firefox
 
-1. Launch Firefox:
-   ```bash
-   firefox &
-   ```
+1. Open Firefox
 2. Go to **Settings → Privacy & Security → View Certificates**
 3. Click **Authorities → Import**
-4. Choose: `/etc/pki/CA/cacert.pem`
+4. Choose `/etc/pki/CA/cacert.pem`
 5. Check **“Trust this CA to identify websites”**
 
 ---
@@ -100,7 +149,7 @@ cd /etc/pki/CA/private
 openssl req -new -keyout newkey.pem -out newreq.pem -days 360 -config ../../tls/openssl.cnf
 ```
 
-**Explanation:** Generates a private key and certificate signing request (CSR) for the server.
+Generates private key and certificate request to be signed.
 
 ---
 
@@ -111,11 +160,11 @@ sudo bash -c "cat newreq.pem newkey.pem > new.pem"
 sudo openssl ca -policy policy_anything -out newcert.pem -config ../../tls/openssl.cnf -infiles new.pem
 ```
 
-**Explanation:** The CA signs the request to issue a valid certificate (`newcert.pem`).
+Combines the request and private key, then uses your CA to sign the certificate.
 
 ---
 
-### 🔹 Step 9: Configure Apache to Use SSL
+### 🔹 Step 9: Configure Apache for SSL
 
 ```bash
 cd /etc/httpd/conf
@@ -124,7 +173,7 @@ sudo cp /etc/pki/CA/private/newcert.pem ssl.crt/
 sudo cp /etc/pki/CA/private/newkey.pem ssl.key/
 ```
 
-Update `/etc/httpd/conf.d/ssl.conf`:
+Edit `/etc/httpd/conf.d/ssl.conf`:
 
 ```apache
 SSLCertificateFile /etc/httpd/conf/ssl.crt/newcert.pem
@@ -143,22 +192,25 @@ sudo service httpd start
 
 ---
 
-### 🔹 Step 11: Test HTTPS in Browser
+### 🔹 Step 11: Test in Firefox
 
-1. Open Firefox
-2. Visit: `https://localhost`
-3. Click **Advanced → Accept the Risk and Continue**
-4. Page should load securely
+Go to:
+
+```
+https://localhost
+```
+
+- Click **Advanced → Accept the Risk and Continue**
+- The secure test page should load
 
 ---
 
 ### 🔹 Step 12: View Certificate Details
 
-1. Click the padlock icon in Firefox
-2. Click **“Connection Secure” → “More Information” → “View Certificate”**
-3. Note:
-   - **Certificate Hierarchy**: should show your CA and `localhost`
-   - **Signature Algorithm**: typically `sha256WithRSAEncryption`
+- Click the padlock → More Info → View Certificate
+- Check:
+  - Certificate Hierarchy (shows your CA and localhost)
+  - Signature Algorithm (should be SHA-256)
 
 ---
 
@@ -166,7 +218,7 @@ sudo service httpd start
 
 ```bash
 sudo setenforce 1
-getenforce  # Should return: Enforcing
+getenforce
 ```
 
 ---
@@ -175,20 +227,15 @@ getenforce  # Should return: Enforcing
 
 You have:
 
-- Created a local CA
-- Signed a server certificate
-- Configured Apache for SSL
-- Verified HTTPS with trusted CA in Firefox
+- Created a working local CA
+- Signed and deployed a server certificate
+- Configured Apache for HTTPS
+- Verified the connection in Firefox
 
 ---
 
 ## 🧠 Summary
 
-This lab provides practical experience with:
-
-- Public Key Infrastructure (PKI)
-- OpenSSL certificate generation and signing
-- Configuring HTTPS on Apache
-- Certificate trust management in browsers
+This lab provides hands-on experience in setting up your own PKI using OpenSSL, managing certs, and enabling SSL with Apache — all foundational security skills.
 
 ---
